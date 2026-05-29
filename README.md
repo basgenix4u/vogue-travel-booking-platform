@@ -2,6 +2,12 @@
 
 A polished portfolio-grade luxury travel booking platform built with **Next.js**, **TypeScript**, **Supabase**, and **Vercel**.
 
+
+## Live Demo
+
+- Production: https://vogue-travel-booking-platform.vercel.app
+- Admin desk: `/admin?key=YOUR_ADMIN_KEY`
+
 ## Case Study
 
 A luxury travel agency needed a bespoke booking platform with interactive date selection, dynamic pricing calculation, visual destination galleries, and a concierge request workflow. VogueTravel delivers a premium responsive interface, real-time quote engine, travel intelligence cards, Supabase-backed booking storage, and an admin review desk.
