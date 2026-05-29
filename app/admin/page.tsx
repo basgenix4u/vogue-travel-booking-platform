@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
-
 type Booking = {
   id: string;
   destination_title: string;
@@ -27,14 +25,21 @@ async function getBookings(key?: string): Promise<{ bookings: Booking[]; error?:
     return { bookings: [], error: 'Enter your admin key to view concierge requests.' };
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !service) return { bookings: [], error: 'Supabase is not configured.' };
 
-  const supabase = createClient(url, service, { auth: { persistSession: false } });
-  const { data, error } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(50);
+  const response = await fetch(`${url}/rest/v1/bookings?select=*&order=created_at.desc&limit=50`, {
+    headers: {
+      apikey: service,
+      Authorization: `Bearer ${service}`
+    },
+    cache: 'no-store'
+  });
 
-  if (error) return { bookings: [], error: error.message };
+  const data = await response.json().catch(() => null);
+  if (!response.ok) return { bookings: [], error: data?.message ?? 'Unable to load bookings.' };
+
   return { bookings: (data ?? []) as Booking[] };
 }
 

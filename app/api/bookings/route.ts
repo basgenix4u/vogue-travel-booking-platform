@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { destinations } from '@/lib/destinations';
 
 type BookingPayload = {
@@ -20,14 +19,26 @@ function validDate(value?: string) {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
 
-function getSupabaseAdmin() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+function getSupabaseConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) return null;
+  return { url: url.replace(/\/$/, ''), serviceRoleKey };
+}
 
-  if (!supabaseUrl || !serviceRoleKey) return null;
+async function supabaseRequest(path: string, init: RequestInit = {}) {
+  const config = getSupabaseConfig();
+  if (!config) throw new Error('Booking storage is not configured yet.');
 
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false }
+  return fetch(`${config.url}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {})
+    },
+    cache: 'no-store'
   });
 }
 
@@ -67,22 +78,28 @@ export async function POST(request: Request) {
     created_at: new Date().toISOString()
   };
 
-  const supabase = getSupabaseAdmin();
+  try {
+    const response = await supabaseRequest('bookings?select=id', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(booking)
+    });
 
-  if (!supabase) {
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      return NextResponse.json(
+        { ok: false, error: data?.message ?? 'Unable to save booking request.' },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json({ ok: true, bookingId: data?.[0]?.id });
+  } catch (error) {
     return NextResponse.json(
-      { ok: false, error: 'Booking storage is not configured yet.' },
+      { ok: false, error: error instanceof Error ? error.message : 'Unable to save booking request.' },
       { status: 503 }
     );
   }
-
-  const { data, error } = await supabase.from('bookings').insert(booking).select('id').single();
-
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true, bookingId: data?.id });
 }
 
 export async function GET(request: Request) {
@@ -93,16 +110,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    return NextResponse.json({ ok: false, error: 'Booking storage is not configured yet.' }, { status: 503 });
+  try {
+    const response = await supabaseRequest('bookings?select=*&order=created_at.desc&limit=50');
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { ok: false, error: data?.message ?? 'Unable to load bookings.' },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json({ ok: true, bookings: data });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : 'Unable to load bookings.' },
+      { status: 503 }
+    );
   }
-
-  const { data, error } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(50);
-
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true, bookings: data });
 }
